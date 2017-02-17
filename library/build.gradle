@@ -9,7 +9,9 @@ android {
         minSdkVersion MIN_SDK_VERSION as int
         targetSdkVersion TARGET_SDK_VERSION as int
 
-        versionCode "git rev-list origin/master --count".execute().text.toInteger()
+        logger.warn('Hello, Gradle!')
+
+        versionCode 258 //"git rev-list origin/master --count".execute().text.toInteger()
         versionName VERSION_NAME
 
         consumerProguardFiles 'proguard-rules.txt'
@@ -62,6 +64,7 @@ artifacts {
     archives androidJavadocsJar
 }
 
+// 用来发布jar库的  发布 android library 到bintray
 publish {
     userOrg = POM_DEVELOPER_ID
     groupId = GROUP
