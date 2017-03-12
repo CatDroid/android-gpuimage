@@ -51,6 +51,8 @@ import jp.co.cyberagent.android.gpuimage.sample.utils.CameraHelper.CameraInfo2;
 
 public class ActivityCamera extends Activity implements OnSeekBarChangeListener, OnClickListener {
 
+
+    private final static String TAG = "ActivityCamera";
     private GPUImage mGPUImage;
     private CameraHelper mCameraHelper;
     private CameraLoader mCamera;
@@ -213,6 +215,7 @@ public class ActivityCamera extends Activity implements OnSeekBarChangeListener,
     }
 
     private void switchFilterTo(final GPUImageFilter filter) {
+        Log.d(TAG, "switchFilterTo " + filter );
         if (mFilter == null
                 || (filter != null && !mFilter.getClass().equals(filter.getClass()))) {
             mFilter = filter;

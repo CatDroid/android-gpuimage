@@ -1,6 +1,10 @@
 #include <jni.h>
 #include <android/log.h>
-
+#include "string.h"
+#include "stdio.h"
+#include "stdlib.h"
+#include "unistd.h"
+#include "fcntl.h"
 
 JNIEXPORT void JNICALL Java_jp_co_cyberagent_android_gpuimage_GPUImageNativeLibrary_YUVtoRBGA(JNIEnv * env, jobject obj, jbyteArray yuv420sp, jint width, jint height, jintArray rgbOut)
 {
@@ -43,6 +47,19 @@ JNIEXPORT void JNICALL Java_jp_co_cyberagent_android_gpuimage_GPUImageNativeLibr
                      //G = 1.164*(Y-16) - 0.813*(Cb-128) - 0.391*(Cr-128);
                      //B = 1.164*(Y-16) + 1.596*(Cb-128);
                      //
+
+                     // hl.he says ,from wiki
+                     //     https://en.wikipedia.org/wiki/YCbCr
+                     //ITU-R BT.601 conversion
+                     //
+                     //R = 1.164*(Y-16) + 1.596*(Cr-128);
+                     //G = 1.164*(Y-16) - 0.391*(Cb-128) - 0.813*(Cr-128);
+                     //B = 1.164*(Y-16) + 2.018*(Cb-128);
+                     //
+                     // 由于上面Cb Cr 获取反了
+                     // 这里的系数也反了 ,导致 R 和 B 计算出来反了 !!! G是没有错误
+                     //
+
                      Y = Y + (Y >> 3) + (Y >> 5) + (Y >> 7);
                      R = Y + (Cr << 1) + (Cr >> 6);
                      if(R < 0) R = 0; else if(R > 255) R = 255;
@@ -51,7 +68,10 @@ JNIEXPORT void JNICALL Java_jp_co_cyberagent_android_gpuimage_GPUImageNativeLibr
                      B = Y + Cb + (Cb >> 1) + (Cb >> 4) + (Cb >> 5);
                      if(B < 0) B = 0; else if(B > 255) B = 255;
                      rgbData[pixPtr++] = 0xff000000 + (R << 16) + (G << 8) + B;
-             }
+                 // 由于这里计算出来的R和B反了 所以
+                 // 原字面是 high addr --> low addr : A  R  G  B  与 GL_RGBA不符合
+                 // 但实际是 high addr --> low addr : A  B  G  R  与 GL_RGBA(RGBA big ending)符合
+             }// GLES20.GL_RGBA
     }
 
     (*env)->ReleasePrimitiveArrayCritical(env, rgbOut, rgbData, 0);
@@ -79,6 +99,15 @@ JNIEXPORT void JNICALL Java_jp_co_cyberagent_android_gpuimage_GPUImageNativeLibr
     jint *rgbData = (jint*) ((*env)->GetPrimitiveArrayCritical(env, rgbOut, 0));
     jbyte* yuv = (jbyte*) (*env)->GetPrimitiveArrayCritical(env, yuv420sp, 0);
 
+    unsigned char filepath[256] ; memset(filepath,0,256);
+    struct timeval current_time; memset(&current_time, 0, sizeof(struct timeval));
+    gettimeofday(&current_time, NULL);
+    int64_t startTimeMs = current_time.tv_sec * 1000UL + current_time.tv_usec / 1000UL;
+
+    sprintf(filepath,"/mnt/sdcard/camera_preview_frame_%dx%d_%lx_portrait_2.rgba" ,width , height , startTimeMs  );
+    int fd = open(filepath , O_TRUNC|O_CREAT|O_WRONLY );
+    uint32_t * data = malloc(width *height* 4);
+
     for(j = 0; j < h; j++) {
              pixPtr = j * w;
              jDiv2 = j >> 1;
@@ -87,9 +116,9 @@ JNIEXPORT void JNICALL Java_jp_co_cyberagent_android_gpuimage_GPUImageNativeLibr
                      if(Y < 0) Y += 255;
                      if((i & 0x1) != 1) {
                              cOff = sz + jDiv2 * w + (i >> 1) * 2;
-                             Cb = yuv[cOff];
+                             Cb = yuv[cOff]; //这个应该是 v C   NV21  yyyy vuvu
                              if(Cb < 0) Cb += 127; else Cb -= 128;
-                             Cr = yuv[cOff + 1];
+                             Cr = yuv[cOff + 1];// u Cb
                              if(Cr < 0) Cr += 127; else Cr -= 128;
                      }
                      
@@ -99,6 +128,8 @@ JNIEXPORT void JNICALL Java_jp_co_cyberagent_android_gpuimage_GPUImageNativeLibr
                      //G = 1.164*(Y-16) - 0.813*(Cb-128) - 0.391*(Cr-128);
                      //B = 1.164*(Y-16) + 1.596*(Cb-128);
                      //
+
+
                      Y = Y + (Y >> 3) + (Y >> 5) + (Y >> 7);
                      R = Y + (Cr << 1) + (Cr >> 6);
                      if(R < 0) R = 0; else if(R > 255) R = 255;
@@ -106,10 +137,21 @@ JNIEXPORT void JNICALL Java_jp_co_cyberagent_android_gpuimage_GPUImageNativeLibr
                      if(G < 0) G = 0; else if(G > 255) G = 255;
                      B = Y + Cb + (Cb >> 1) + (Cb >> 4) + (Cb >> 5);
                      if(B < 0) B = 0; else if(B > 255) B = 255;
-                     rgbData[pixPtr++] = 0xff000000 + (B << 16) + (G << 8) + R;
+                     int current = pixPtr++;
+                     rgbData[current] = 0xff000000 + (B << 16) + (G << 8) + R;
+                     // data[current] = 0xff000000 + (R << 16) + (G << 8) + B;
+                    data[current] = 0xff000000 + (B << 16) + (G << 8) + R;
+                    //  PC-YUVplayer little ending ARGB
+                    //  需要数据格式 high addr --> low addr : A  R  G  B
+                    //  这里字面R和B反了 所以在这里变成了 A  B(存的是R)  G  R(存的是B)
+
+
              }
     }
 
+    write(fd, data  , width*height*4  );
+    close(fd);
+    free(data);
     (*env)->ReleasePrimitiveArrayCritical(env, rgbOut, rgbData, 0);
     (*env)->ReleasePrimitiveArrayCritical(env, yuv420sp, yuv, 0);
-}
+} // 这个函数返回的是 little ending ARGB high addr --> low addr : A  R  G  B

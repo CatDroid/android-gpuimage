@@ -25,16 +25,21 @@ import android.hardware.Camera.PreviewCallback;
 import android.hardware.Camera.Size;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView.Renderer;
+import android.util.Log;
 
 import jp.co.cyberagent.android.gpuimage.util.TextureRotationUtil;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
+
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.nio.channels.FileChannel;
 import java.util.LinkedList;
 import java.util.Queue;
 
@@ -51,6 +56,7 @@ public class GPUImageRenderer implements Renderer, PreviewCallback {
     };
 
     private GPUImageFilter mFilter;
+    private final static String TAG = "GPUImageRenderer" ;
 
     public final Object mSurfaceChangedWaiter = new Object();
 
@@ -104,9 +110,10 @@ public class GPUImageRenderer implements Renderer, PreviewCallback {
     public void onSurfaceChanged(final GL10 gl, final int width, final int height) {
         mOutputWidth = width;
         mOutputHeight = height;
-        GLES20.glViewport(0, 0, width, height);
+        GLES20.glViewport(0, 0, width, height); // 更新viewport
         GLES20.glUseProgram(mFilter.getProgram());
-        mFilter.onOutputSizeChanged(width, height);
+        mFilter.onOutputSizeChanged(width, height); // 跟新FBO(maybe ImageFilterGroup )
+        Log.d(TAG,"surface changed update " + mFilter );
         adjustImageScaling();
         synchronized (mSurfaceChangedWaiter) {
             mSurfaceChangedWaiter.notifyAll();
@@ -145,11 +152,15 @@ public class GPUImageRenderer implements Renderer, PreviewCallback {
         }
     }
 
+    private int counter = 0 ;
+
     @Override
     public void onPreviewFrame(final byte[] data, final Camera camera) {
         final Size previewSize = camera.getParameters().getPreviewSize();
         if (mGLRgbBuffer == null) {
             mGLRgbBuffer = IntBuffer.allocate(previewSize.width * previewSize.height);
+            mGLRgbBuffer.order();
+            Log.d(TAG,"IntBuffer order " + mGLRgbBuffer.order() );
         }
         if (mRunOnDraw.isEmpty()) {
             runOnDraw(new Runnable() {
@@ -157,6 +168,18 @@ public class GPUImageRenderer implements Renderer, PreviewCallback {
                 public void run() {
                     GPUImageNativeLibrary.YUVtoRBGA(data, previewSize.width, previewSize.height,
                             mGLRgbBuffer.array());
+
+                    if( counter++ == 30 ){
+                        IntBuffer rgba = IntBuffer.allocate(previewSize.width * previewSize.height);
+                        Log.d(TAG, " YUVtoARBG ");
+                        GPUImageNativeLibrary.YUVtoARBG(data, previewSize.width, previewSize.height,
+                                rgba.array());
+                        Log.d(TAG,"save done !");
+                    }
+
+
+
+
                     mGLTextureId = OpenGlUtils.loadTexture(mGLRgbBuffer, previewSize, mGLTextureId);
                     camera.addCallbackBuffer(data);
 
