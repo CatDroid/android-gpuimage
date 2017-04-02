@@ -270,11 +270,18 @@ public class ActivityCamera extends Activity implements OnSeekBarChangeListener,
             }
             mCameraInstance.setParameters(parameters);
 
+            // 原本这个是设置给Camera.setDisplayOrientation的，然后通过SurfaceTexutre.getTransformMatrix获取的纹理转换矩阵的
+            // 不过由于不是通过SurfaceTexture.updateTexImage来获取图像数据的 ,而是通过Camera.onPreviewFrame获取的
+            // 而且纹理坐标数组还应该根据显示方式 GPUImageRender.mScaleType
+            // 故在adjustImageScaling的时候才计算出纹理坐标数据
+            // TextureRotationUtil.getRotation = GPUImageRenderer.CUBE * SurfaceTexture.updateTexImage
             int orientation = mCameraHelper.getCameraDisplayOrientation(
                     ActivityCamera.this, mCurrentCameraId);
             CameraInfo2 cameraInfo = new CameraInfo2();
             mCameraHelper.getCameraInfo(mCurrentCameraId, cameraInfo);
             boolean flipHorizontal = cameraInfo.facing == CameraInfo.CAMERA_FACING_FRONT;
+            Log.d(TAG,String.format( "setupCamera orientation %d flipHorizontal %b  flipVertical %b ",
+                                                orientation,  flipHorizontal , false  ) );
             mGPUImage.setUpCamera(mCameraInstance, orientation, flipHorizontal, false);
         }
 

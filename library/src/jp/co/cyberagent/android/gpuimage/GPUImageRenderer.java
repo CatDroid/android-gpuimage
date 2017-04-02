@@ -25,6 +25,7 @@ import android.hardware.Camera.PreviewCallback;
 import android.hardware.Camera.Size;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView.Renderer;
+import android.opengl.Matrix;
 import android.util.Log;
 
 import jp.co.cyberagent.android.gpuimage.util.TextureRotationUtil;
@@ -40,6 +41,7 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.channels.FileChannel;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.Queue;
 
@@ -77,7 +79,8 @@ public class GPUImageRenderer implements Renderer, PreviewCallback {
     private Rotation mRotation;
     private boolean mFlipHorizontal;
     private boolean mFlipVertical;
-    private GPUImage.ScaleType mScaleType = GPUImage.ScaleType.CENTER_CROP;
+    private GPUImage.ScaleType mScaleType = GPUImage.ScaleType.CENTER_INSIDE;
+    // 使用CENTER_INSIDE旋转的时候会发现变形的 !
 
     private float mBackgroundRed = 0;
     private float mBackgroundGreen = 0;
@@ -297,10 +300,19 @@ public class GPUImageRenderer implements Renderer, PreviewCallback {
             outputWidth = mOutputHeight;
             outputHeight = mOutputWidth;
         }
-
+        Log.d(TAG,"Rotation " + mRotation );
+        Log.d(TAG,String.format("in [%d %d ] " , mImageWidth , mImageHeight ));
+        Log.d(TAG,String.format("out [%d %d ] " , mOutputWidth , mOutputHeight ));
         float ratio1 = outputWidth / mImageWidth;
         float ratio2 = outputHeight / mImageHeight;
+
+        // 使用比例大的(代表差值大的一边)全部显示,那么另外一边就会有部分截断,但是不会有黑色边
         float ratioMax = Math.max(ratio1, ratio2);
+        //float ratioMax = Math.min(ratio1, ratio2);
+
+        Log.d(TAG,String.format("out display %f -> %d %f " , outputWidth , mImageWidth , ratio1 ));
+        Log.d(TAG,String.format("out display %f -> %d %f " , outputHeight , mImageHeight , ratio2));
+
         int imageWidthNew = Math.round(mImageWidth * ratioMax);
         int imageHeightNew = Math.round(mImageHeight * ratioMax);
 
@@ -309,6 +321,34 @@ public class GPUImageRenderer implements Renderer, PreviewCallback {
 
         float[] cube = CUBE;
         float[] textureCords = TextureRotationUtil.getRotation(mRotation, mFlipHorizontal, mFlipVertical);
+        Log.d(TAG,"before textureCords " + Arrays.toString(textureCords));
+        Log.d(TAG,"before cube " + Arrays.toString(cube));
+        float [] frontCamPortrait = new float[]{
+                0,  -1, 0,  0, // 前摄像头  屏幕方向为竖向portrait情况下 对应的纹理转换矩阵 SurfaceTexture.getTransformMatrix
+                1,  0,  0,  0,
+                0,  0,  1,  0,
+                0,  1,  0,  1
+        };
+        float [] resultVer = new float[4];
+        Matrix.multiplyMV(resultVer, 0 , frontCamPortrait , 0 ,
+                new float[]{TextureRotationUtil.TEXTURE_NO_ROTATION_GL[0],TextureRotationUtil.TEXTURE_NO_ROTATION_GL[1],0,1 }
+                , 0  );
+        Log.d(TAG, String.format("[%f %f]", resultVer[0], resultVer[1] ) );
+        Matrix.multiplyMV(resultVer, 0 , frontCamPortrait , 0 ,
+                new float[]{TextureRotationUtil.TEXTURE_NO_ROTATION_GL[2],TextureRotationUtil.TEXTURE_NO_ROTATION_GL[3],0,1 }
+                , 0  );
+        Log.d(TAG, String.format("[%f %f]", resultVer[0], resultVer[1] ) );
+        Matrix.multiplyMV(resultVer, 0 , frontCamPortrait , 0 ,
+                new float[]{TextureRotationUtil.TEXTURE_NO_ROTATION_GL[4],TextureRotationUtil.TEXTURE_NO_ROTATION_GL[5],0,1 }
+                , 0  );
+        Log.d(TAG, String.format("[%f %f]", resultVer[0], resultVer[1] ) );
+        Matrix.multiplyMV(resultVer, 0 , frontCamPortrait , 0 ,
+                new float[]{TextureRotationUtil.TEXTURE_NO_ROTATION_GL[6],TextureRotationUtil.TEXTURE_NO_ROTATION_GL[7],0,1 }
+                , 0  );
+        Log.d(TAG, String.format("[%f %f]", resultVer[0], resultVer[1] ) );
+        // 这样算出来的纹理坐标数组 跟  TextureRotationUtil.getRotation 得到的一样
+
+
         if (mScaleType == GPUImage.ScaleType.CENTER_CROP) {
             float distHorizontal = (1 - 1 / ratioWidth) / 2;
             float distVertical = (1 - 1 / ratioHeight) / 2;
@@ -318,6 +358,7 @@ public class GPUImageRenderer implements Renderer, PreviewCallback {
                     addDistance(textureCords[4], distHorizontal), addDistance(textureCords[5], distVertical),
                     addDistance(textureCords[6], distHorizontal), addDistance(textureCords[7], distVertical),
             };
+
         } else {
             cube = new float[]{
                     CUBE[0] / ratioHeight, CUBE[1] / ratioWidth,
@@ -327,6 +368,9 @@ public class GPUImageRenderer implements Renderer, PreviewCallback {
             };
         }
 
+
+        Log.d(TAG, "after cube = " + Arrays.toString(cube) );
+        Log.d(TAG, "after textureCords = " + Arrays.toString(textureCords));
         mGLCubeBuffer.clear();
         mGLCubeBuffer.put(cube).position(0);
         mGLTextureBuffer.clear();
