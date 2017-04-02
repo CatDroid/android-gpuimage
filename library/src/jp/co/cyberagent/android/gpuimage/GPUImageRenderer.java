@@ -116,7 +116,7 @@ public class GPUImageRenderer implements Renderer, PreviewCallback {
         GLES20.glViewport(0, 0, width, height); // 更新viewport
         GLES20.glUseProgram(mFilter.getProgram());
         mFilter.onOutputSizeChanged(width, height); // 跟新FBO(maybe ImageFilterGroup )
-        Log.d(TAG,"surface changed update " + mFilter );
+        Log.d(TAG,"surface changed update " + mFilter );// 所有FBO的大小都是显示View的大小
         adjustImageScaling();
         synchronized (mSurfaceChangedWaiter) {
             mSurfaceChangedWaiter.notifyAll();

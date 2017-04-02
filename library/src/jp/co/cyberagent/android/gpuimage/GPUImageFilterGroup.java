@@ -198,10 +198,14 @@ public class GPUImageFilterGroup extends GPUImageFilter {
                 }
 
                 if (i == 0) {
+                    // 由于 GPUImageRender onSurfaceChanged 会根据显示区域View的大小修改所有FBO
+                    // 如果使用CENTER_CROP的方式  纹理图片不会全部被使用
                     filter.onDraw(previousTexture, cubeBuffer, textureBuffer);
                 } else if (i == size - 1) {
+                    // ???? 最后一个  而且Filter的数目是偶数使用 mGLTextureFlipBuffer??上下翻转???
                     filter.onDraw(previousTexture, mGLCubeBuffer, (size % 2 == 0) ? mGLTextureFlipBuffer : mGLTextureBuffer);
                 } else {
+                    // mGLCubeBuffer和mGLTextureBuffer都是没旋转的
                     filter.onDraw(previousTexture, mGLCubeBuffer, mGLTextureBuffer);
                 }
 
